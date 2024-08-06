@@ -1,0 +1,12 @@
+[package]
+name = "trainer-base"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+winapi = { version = "0.3.9", features = ["minwindef", "memoryapi", "winnt", "tlhelp32", "handleapi", "processthreadsapi", "impl-default", "errhandlingapi", "basetsd", "wow64apiset", "psapi"] }
+litcrypt = "0.3.0"
+
+[profile.release]
+strip = true
+panic = "abort"
