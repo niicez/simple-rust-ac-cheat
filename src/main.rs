@@ -1,10 +1,12 @@
-use std::io::{Error, Result};
-
-use trainer_base::memory::Process;
-use trainer_base::misc::pause;
-use trainer_base::process::{get_pid_by_name, get_process_base, get_process_info};
-
 extern crate litcrypt;
+
+use std::io::{Error, Result};
+use trainer_base::{
+    memory::Process,
+    misc::pause,
+    process::{get_pid_by_name, get_process_base, get_process_info},
+};
+
 litcrypt::use_litcrypt!();
 
 fn get_pointer_address(
@@ -12,9 +14,10 @@ fn get_pointer_address(
     offsets: Vec<usize>,
     process: &Process,
 ) -> Result<usize> {
-    let mut result_address: usize = base_address;
+    let mut result_address = base_address;
     for (index, offset) in offsets.iter().enumerate() {
         let mut buffer: [u8; 4] = [0; 4];
+
         process
             .read_memory(result_address + offset, &mut buffer)
             .map_err(|e| {
@@ -28,30 +31,25 @@ fn get_pointer_address(
             })?;
 
         result_address = u32::from_le_bytes(buffer) as usize;
-
-        println!(
-            "[get_pointer_address]: get - {} -> {:#x}",
-            index, result_address
-        );
+        println!("[get_pointer_address]: {} -> {:#x}", index, result_address);
     }
 
     Ok(result_address)
 }
 
 fn main() {
-    let b_process_name = litcrypt::lc!("ac_client.exe");
-    let process_name: &str = b_process_name.as_str();
+    let localplayer_ptr_offset = 0x0018B0B8;
+    let localplayer_offset = 0x404;
+    let health_offset = 0x04;
 
-    let localplayer_ptr_offset: usize = 0x0018B0B8;
-    let localplayer_offset: usize = 0x404;
-    let health_offset: usize = 0x04;
+    let b_process_name = litcrypt::lc!("ac_client.exe");
+    let process_name = &b_process_name;
 
     let pid = match get_pid_by_name(process_name) {
         Some(pid) => pid,
         None => {
-            println!("Process not found");
-            pause();
-            return;
+            println!("Process not found: {}", process_name);
+            return pause();
         }
     };
 
@@ -71,46 +69,42 @@ fn main() {
 
     let process = Process::new(pid);
     let base_address = match get_process_base(pid, process_name) {
-        Some(base_address) => base_address,
+        Some(base_address) => base_address as usize,
         None => {
             println!("Module not found");
-            pause();
-            return;
+            return pause();
         }
     };
 
     println!(
         "Base address of module {}: {:#x}",
-        process_name, base_address as usize
+        process_name, base_address
     );
 
-    let localplayer_ptr_address: usize = match get_pointer_address(
-        base_address as usize,
-        vec![localplayer_ptr_offset, 0x0],
-        &process,
-    ) {
-        Ok(address) => address,
+    let localplayer_ptr_address =
+        match get_pointer_address(base_address, vec![localplayer_ptr_offset, 0x0], &process) {
+            Ok(address) => address,
+            Err(e) => {
+                println!("{}", e);
+                return pause();
+            }
+        };
+
+    let localplayer_address = localplayer_ptr_address + localplayer_offset;
+    println!("LocalPlayer Address {:#x}", localplayer_address);
+
+    let health_value_address = localplayer_address + health_offset;
+    println!("Health Value Address {:#x}", health_value_address);
+
+    match process.write_memory(health_value_address, &999) {
+        Ok(_) => println!("Successfully wrote value at {:#x}", health_value_address),
         Err(e) => {
-            println!("{}", e);
-            pause();
-            return;
+            eprintln!(
+                "Failed to write memory at {:#x}: {}",
+                health_value_address, e
+            );
         }
     };
 
-    let localplayer_address = localplayer_ptr_address + localplayer_offset;
-    println!("LocalPlayer Address {:#x}", localplayer_address as usize);
-
-    let health_value: usize = localplayer_address + health_offset;
-    println!("Health Value Address {:#x}", health_value as usize);
-
-    if let Err(e) = process.write_memory(health_value, &999) {
-        println!(
-            "Failed to write memory at health_value Address {:#x}: {}",
-            health_value as usize,
-            Error::from_raw_os_error(e as i32)
-        );
-    } else {
-        println!("Successfully wrote value at health_value Address");
-    }
     pause();
 }
